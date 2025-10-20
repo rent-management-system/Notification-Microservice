@@ -2,6 +2,7 @@ from uuid import UUID, uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from app.models.notification import Notification
+from sqlalchemy import text
 from app.core.logging import logger
 from datetime import datetime
 import boto3
