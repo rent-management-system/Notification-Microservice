@@ -336,3 +336,57 @@ async def test_unauthorized_access(client: AsyncClient, db_session: AsyncSession
         }
     )
     assert response.status_code == 403
+
+@pytest.mark.asyncio
+async def test_get_notification_stats(client: AsyncClient, db_session: AsyncSession, mock_user_management_verify):
+    user_id_1 = UUID("123e4567-e89b-12d3-a456-426614174000")
+    user_id_2 = UUID("123e4567-e89b-12d3-a456-426614174001")
+
+    # Add some test data for stats
+    n1 = Notification(id=UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380e01"), user_id=user_id_1, event_type="payment_success", status="SENT", context={}, sent_at=datetime.utcnow())
+    n2 = Notification(id=UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380e02"), user_id=user_id_1, event_type="payment_success", status="FAILED", context={})
+    n3 = Notification(id=UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380e03"), user_id=user_id_2, event_type="listing_approved", status="SENT", context={}, sent_at=datetime.utcnow())
+    n4 = Notification(id=UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380e04"), user_id=user_id_2, event_type="listing_approved", status="PENDING", context={})
+    n5 = Notification(id=UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380e05"), user_id=user_id_1, event_type="tenant_update", status="SENT", context={}, sent_at=datetime.utcnow())
+    db_session.add_all([n1, n2, n3, n4, n5])
+    await db_session.commit()
+
+    response = await client.get(
+        "/api/v1/notifications/stats",
+        headers={
+            "Authorization": "Bearer test_token"
+        }
+    )
+
+    assert response.status_code == 200
+    stats = response.json()
+
+    assert stats["total_notifications"] == 5
+    assert stats["total_sent"] == 3
+    assert stats["total_failed"] == 1
+    assert stats["total_pending"] == 1
+
+    assert stats["by_status"] == {"SENT": 3, "FAILED": 1, "PENDING": 1}
+
+    assert stats["by_event_type"]["payment_success"] == {"SENT": 1, "FAILED": 1, "PENDING": 0}
+    assert stats["by_event_type"]["listing_approved"] == {"SENT": 1, "FAILED": 0, "PENDING": 1}
+    assert stats["by_event_type"]["tenant_update"] == {"SENT": 1, "FAILED": 0, "PENDING": 0}
+
+@pytest.mark.asyncio
+async def test_get_notification_stats_unauthorized(client: AsyncClient, db_session: AsyncSession, mock_user_management_verify):
+    # Mock user management to return a non-admin role
+    mock_user_management_verify.json.return_value = {
+        "user_id": "123e4567-e89b-12d3-a456-426614174000",
+        "role": "Tenant", # Not Admin
+        "email": "tenant@example.com",
+        "phone_number": "+251911123456",
+        "preferred_language": "en"
+    }
+
+    response = await client.get(
+        "/api/v1/notifications/stats",
+        headers={
+            "Authorization": "Bearer test_token"
+        }
+    )
+    assert response.status_code == 403

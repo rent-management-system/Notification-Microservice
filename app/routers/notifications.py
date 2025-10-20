@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from uuid import UUID
 from typing import List, Optional
-from app.schemas.notification import NotificationCreate, NotificationResponse
-from app.services.notification import send_notification_service, get_notification_by_id, get_notifications_filtered, retry_failed_notifications
+from app.schemas.notification import NotificationCreate, NotificationResponse, NotificationStatsResponse
+from app.services.notification import send_notification_service, get_notification_by_id, get_notifications_filtered, retry_failed_notifications, get_notification_stats
 from app.dependencies.auth import get_admin_or_internal_user, get_admin_user
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.main import get_db
@@ -42,6 +42,15 @@ async def get_notifications(
     """Retrieve a list of notifications, with optional filtering by user_id and event_type."""
     notifications = await get_notifications_filtered(db, user_id=user_id, event_type=event_type)
     return [NotificationResponse.model_validate(n) for n in notifications]
+
+@router.get("/stats", response_model=NotificationStatsResponse)
+async def get_notifications_stats(
+    current_user: dict = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Retrieve aggregated statistics about notifications."""
+    stats = await get_notification_stats(db)
+    return NotificationStatsResponse.model_validate(stats)
 
 @router.post("/retry", status_code=status.HTTP_200_OK)
 async def retry_notifications_endpoint(
