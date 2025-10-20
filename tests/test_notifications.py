@@ -6,6 +6,7 @@ from app.models.notification import Notification
 from app.schemas.notification import NotificationResponse
 from app.services.notification import send_notification_service, get_notification_by_id, get_notifications_filtered, retry_failed_notifications
 from datetime import datetime, timedelta
+import json
 
 @pytest.mark.asyncio
 async def test_send_notification_success(client: AsyncClient, db_session: AsyncSession, mock_user_management_verify, mock_ses_send_email, mock_sms_send):
@@ -39,9 +40,61 @@ async def test_send_notification_success(client: AsyncClient, db_session: AsyncS
     assert notification.context == context
     assert notification.sent_at is not None
 
-    # Verify SES and SMS mocks were called
-    mock_ses_send_email.send_email.assert_called_once()
-    mock_sms_send.assert_called_once()
+    # Verify SES and SMS mocks were called with correct content from JSON template
+    with open("app/templates/notifications.json", "r", encoding="utf-8") as f:
+        templates = json.load(f)
+    expected_subject = templates["payment_success"]["subject"]["en"].format(**context)
+    expected_body = templates["payment_success"]["body"]["en"].format(**context)
+
+    mock_ses_send_email.send_email.assert_called_once_with(
+        Source="no-reply@rental-system.com",
+        Destination={'ToAddresses': ["test@example.com"]},
+        Message={'Subject': {'Data': expected_subject}, 'Body': {'Text': {'Data': expected_body}}}
+    )
+    mock_sms_send.assert_called_once_with("+251911123456", expected_body)
+
+@pytest.mark.asyncio
+async def test_send_notification_new_listing_amharic(client: AsyncClient, db_session: AsyncSession, mock_user_management_verify, mock_ses_send_email, mock_sms_send):
+    user_id = UUID("123e4567-e89b-12d3-a456-426614174001") # Amharic user
+    event_type = "new_listing"
+    context = {"property_title": "Brand New Apartment", "location": "Bole, Addis Ababa"}
+
+    # Mock user management to return Amharic user
+    mock_user_management_verify.json.return_value = {
+        "user_id": str(user_id),
+        "role": "Tenant",
+        "email": "amharic@example.com",
+        "phone_number": "+251911123457",
+        "preferred_language": "am"
+    }
+
+    response = await client.post(
+        "/api/v1/notifications/send",
+        headers={
+            "Authorization": "Bearer test_token"
+        },
+        json={
+            "user_id": str(user_id),
+            "event_type": event_type,
+            "context": context
+        }
+    )
+
+    assert response.status_code == 202
+    data = response.json()
+    assert data["status"] == "SENT"
+
+    with open("app/templates/notifications.json", "r", encoding="utf-8") as f:
+        templates = json.load(f)
+    expected_subject = templates["new_listing"]["subject"]["am"].format(**context)
+    expected_body = templates["new_listing"]["body"]["am"].format(**context)
+
+    mock_ses_send_email.send_email.assert_called_once_with(
+        Source="no-reply@rental-system.com",
+        Destination={'ToAddresses': ["amharic@example.com"]},
+        Message={'Subject': {'Data': expected_subject}, 'Body': {'Text': {'Data': expected_body}}}
+    )
+    mock_sms_send.assert_called_once_with("+251911123457", expected_body)
 
 @pytest.mark.asyncio
 async def test_send_notification_user_not_found(client: AsyncClient, db_session: AsyncSession, mock_user_management_verify, mock_ses_send_email, mock_sms_send):
@@ -222,7 +275,7 @@ async def test_retry_failed_notifications_max_attempts(client: AsyncClient, db_s
     await db_session.commit()
 
     mock_ses_send_email.send_email.reset_mock()
-    mock_sms_send.reset_mock()
+    mock_sms_send.reset_called()
 
     response = await client.post(
         "/api/v1/notifications/retry",

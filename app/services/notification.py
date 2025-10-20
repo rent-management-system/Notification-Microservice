@@ -60,46 +60,21 @@ async def get_user_details_from_db(db: AsyncSession, user_id: UUID):
         return None
 
 def get_notification_template(event_type: str, preferred_language: str, context: dict) -> dict:
-    templates = {
-        "payment_success": {
-            "en": f"Your payment for '{{property_title}}' in {{location}} of {{amount}} ETB was successful. Thank you!",
-            "am": f"ክፍያዎ ለ'{{property_title}}' በ{{location}} {{amount}} ብር ተሳክቷል። እናመሰግናለን!",
-            "om": f"Kaffaltiin keessan '{{property_title}}' {{location}} keessatti {{amount}} qarshii milkaa'eera. Galatoomaa!"
-        },
-        "payment_failed": {
-            "en": f"Your payment for '{{property_title}}' in {{location}} of {{amount}} ETB failed. Please try again.",
-            "am": f"ክፍያዎ ለ'{{property_title}}' በ{{location}} {{amount}} ብር አልተሳካም። እባክዎ እንደገና ይሞክሩ።",
-            "om": f"Kaffaltiin keessan '{{property_title}}' {{location}} keessatti {{amount}} qarshii hin milkoofne. Irra deebi'aa yaalaa."
-        },
-        "listing_approved": {
-            "en": f"Your listing '{{property_title}}' in {{location}} has been approved and is now live!",
-            "am": f"የእርስዎ ዝርዝር '{{property_title}}' በ{{location}} ጸድቋል እና አሁን ቀጥታ ነው።",
-            "om": f"Tarreen keessan '{{property_title}}' {{location}} keessatti mirkanaa'ee jira, amma online jira!"
-        },
-        "tenant_update": {
-            "en": f"Update for your listing '{{property_title}}': A tenant named {{tenant_name}} is interested.",
-            "am": f"ለዝርዝርዎ '{{property_title}}' ማሻሻያ: {{tenant_name}} የሚባል ተከራይ ፍላጎት አለው።",
-            "om": f"Tarree keessan '{{property_title}}' irratti odeeffannoo haaraa: Kirreessaan maqaan isaa {{tenant_name}} jedhamu fedhii qaba."
-        }
-    }
-
-    subject_templates = {
-        "payment_success": {"en": "Payment Successful", "am": "ክፍያ ተሳክቷል", "om": "Kaffaltiin Milkaa'eera"},
-        "payment_failed": {"en": "Payment Failed", "am": "ክፍያ አልተሳካም", "om": "Kaffaltiin Hin Milkoofne"},
-        "listing_approved": {"en": "Listing Approved", "am": "ዝርዝር ጸድቋል", "om": "Tarreen Mirkanoofte"},
-        "tenant_update": {"en": "Tenant Update", "am": "የተከራይ ማሻሻያ", "om": "Odeeffannoo Kirreessaa"}
-    }
+    template_data = NOTIFICATION_TEMPLATES.get(event_type)
+    if not template_data:
+        logger.warning("No template found for event_type, falling back to default", event_type=event_type)
+        template_data = NOTIFICATION_TEMPLATES.get("payment_success", {}) # Fallback to a default
 
     lang = preferred_language if preferred_language in ["en", "am", "om"] else "en"
 
-    message_template = templates.get(event_type, {}).get(lang, templates["payment_success"]["en"])
-    subject_template = subject_templates.get(event_type, {}).get(lang, subject_templates["payment_success"]["en"])
+    subject_template = template_data.get("subject", {}).get(lang, template_data.get("subject", {}).get("en", "Notification"))
+    body_template = template_data.get("body", {}).get(lang, template_data.get("body", {}).get("en", "No message provided."))
 
     # Format the message with context, handling missing keys gracefully
-    formatted_message = message_template.format(**context)
     formatted_subject = subject_template.format(**context)
+    formatted_body = body_template.format(**context)
 
-    return {"subject": formatted_subject, "body": formatted_message}
+    return {"subject": formatted_subject, "body": formatted_body}
 
 async def send_notification_service(db: AsyncSession, user_id: UUID, event_type: str, context: dict) -> Notification:
     notification_id = uuid4()
