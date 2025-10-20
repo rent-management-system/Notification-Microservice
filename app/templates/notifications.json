@@ -1,0 +1,62 @@
+{
+  "payment_success": {
+    "subject": {
+      "en": "Payment Successful",
+      "am": "ክፍያ ተሳክቷል",
+      "om": "Kaffaltiin Milkaa'eera"
+    },
+    "body": {
+      "en": "Your payment of {amount} ETB for '{property_title}' in {location} was successful. Thank you!",
+      "am": "ክፍያዎ {amount} ብር ለ'{property_title}' በ{location} ተሳክቷል። እናመሰግናለን!",
+      "om": "Kaffaltiin keessan {amount} ETB '{property_title}' {location} keessatti milkaa'eera. Galatoomaa!"
+    }
+  },
+  "payment_failed": {
+    "subject": {
+      "en": "Payment Failed",
+      "am": "ክፍያ አልተሳካም",
+      "om": "Kaffaltiin Hin Milkoofne"
+    },
+    "body": {
+      "en": "Your payment of {amount} ETB for '{property_title}' in {location} failed. Please try again.",
+      "am": "ክፍያዎ {amount} ብር ለ'{property_title}' በ{location} አልተሳካም። እባክዎ እንደገና ይሞክሩ።",
+      "om": "Kaffaltiin keessan {amount} ETB '{property_title}' {location} keessatti hin milkoofne. Irra deebi'aa yaalaa."
+    }
+  },
+  "listing_approved": {
+    "subject": {
+      "en": "Listing Approved",
+      "am": "ዝርዝር ጸድቋል",
+      "om": "Tarreen Mirkanoofte"
+    },
+    "body": {
+      "en": "Your listing '{property_title}' in {location} has been approved and is now live!",
+      "am": "የእርስዎ ዝርዝር '{property_title}' በ{location} ጸድቋል እና አሁን ቀጥታ ነው።",
+      "om": "Tarreen keessan '{property_title}' {location} keessatti mirkanaa'ee jira, amma online jira!"
+    }
+  },
+  "tenant_update": {
+    "subject": {
+      "en": "Tenant Update",
+      "am": "የተከራይ ማሻሻያ",
+      "om": "Odeeffannoo Kirreessaa"
+    },
+    "body": {
+      "en": "Update for your listing '{property_title}': A tenant named {tenant_name} is interested.",
+      "am": "ለዝርዝርዎ '{property_title}' ማሻሻያ: {tenant_name} የሚባል ተከራይ ፍላጎት አለው።",
+      "om": "Tarree keessan '{property_title}' irratti odeeffannoo haaraa: Kirreessaan maqaan isaa {tenant_name} jedhamu fedhii qaba."
+    }
+  },
+  "new_listing": {
+    "subject": {
+      "en": "New Listing Available",
+      "am": "አዲስ ዝርዝር ይገኛል",
+      "om": "Tarree Haaraa Argama"
+    },
+    "body": {
+      "en": "A new listing '{property_title}' is available in {location} matching your preferences.",
+      "am": "አዲስ ዝርዝር '{property_title}' በ{location} ምርጫዎችዎ ጋር የሚዛመድ ይገኛል።",
+      "om": "Tarree haaraa '{property_title}' {location} keessatti fedhii keessaniif argama."
+    }
+  }
+}
