@@ -1,3 +1,5 @@
+
+
 INSERT INTO Notifications (id, user_id, event_type, status, attempts, context, sent_at, created_at, updated_at) VALUES
 ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', '123e4567-e89b-12d3-a456-426614174000', 'payment_success', 'SENT', 0, '{"property_title": "Modern Apartment", "location": "Addis Ababa", "amount": 1500}', NOW() - INTERVAL '1 day', NOW() - INTERVAL '1 day', NOW() - INTERVAL '1 day'),
 ('a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a12', '123e4567-e89b-12d3-a456-426614174001', 'listing_approved', 'PENDING', 0, '{"property_title": "Spacious Villa", "location": "Bole, Addis Ababa"}', NOW(), NOW(), NOW()),

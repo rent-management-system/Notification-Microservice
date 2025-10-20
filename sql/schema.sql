@@ -1,3 +1,5 @@
+
+
 CREATE TABLE IF NOT EXISTS Notifications (
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL,
