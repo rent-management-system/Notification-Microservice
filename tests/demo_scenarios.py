@@ -74,6 +74,9 @@ async def test_demo_rate_limit_exceeded(client: AsyncClient, mock_user_managemen
     # For demonstration, we'll mock the limiter's check function.
     mocker.patch("fastapi_limiter.FastAPILimiter.check", return_value=False)
 
+    # Mock the logger to capture calls
+    mock_logger_warning = mocker.patch("app.main.logger.warning")
+
     response = await client.post(
         "/api/v1/notifications/send",
         headers={
@@ -88,7 +91,14 @@ async def test_demo_rate_limit_exceeded(client: AsyncClient, mock_user_managemen
 
     assert response.status_code == 429 # Too Many Requests
     assert "Too Many Requests" in response.json()["detail"]
+    mock_logger_warning.assert_called_once_with(
+        "Rate limit exceeded",
+        ip_address=mocker.ANY,
+        pkey=mocker.ANY,
+        event="rate_limit_exceeded"
+    )
     print(f"\nDEMO SCENARIO: Rate limit exceeded. Response: {response.json()}")
 
     # Reset mock
     mocker.patch("fastapi_limiter.FastAPILimiter.check").stop()
+    mock_logger_warning.stop() # Stop the logger mock
