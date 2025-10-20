@@ -208,8 +208,8 @@ async def retry_failed_notifications(db: AsyncSession):
 
             if user.email:
                 await send_email_ses(user.email, subject, body)
-            if user.phone_number:
-                await send_sms_mock(user.phone_number, body)
+            if user['phone_number']:
+                await send_sms_mock(user['phone_number'], body)
 
             notification.status = "SENT"
             notification.sent_at = datetime.utcnow()

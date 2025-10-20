@@ -10,6 +10,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 from app.services.notification import retry_failed_notifications
 from fastapi_limiter import FastAPILimiter
 from redis.asyncio import Redis
+import os
 
 # Configure logging
 configure_logging()
