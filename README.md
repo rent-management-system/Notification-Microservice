@@ -189,7 +189,49 @@ This microservice handles sending notifications (email, SMS) for a Rental Manage
     ```
     *(This endpoint is typically called by `apscheduler` internally, but can be triggered manually for testing.)*
 
+### Demonstrating Error Scenarios
+
+To showcase the robustness and error handling of the microservice, you can simulate the following scenarios:
+
+1.  **Send to a Non-Existent User (will result in FAILED notification log):**
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/notifications/send" \
+         -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+         -H "Content-Type: application/json" \
+         -d '{
+               "user_id": "00000000-0000-0000-0000-000000000000",
+               "event_type": "payment_success",
+               "context": {
+                 "property_title": "Non-existent User Test",
+                 "location": "Unknown",
+                 "amount": 100
+               }
+             }'
+    ```
+    *(This will log a FAILED notification in the database as the user cannot be found.)*
+
+2.  **Trigger Rate Limit (send more than 10 requests/minute to `/send`):**
+    Rapidly execute the `POST /api/v1/notifications/send` command more than 10 times within a minute. Subsequent requests will receive a `429 Too Many Requests` error.
+    ```bash
+    # Example of a request that will eventually be rate-limited
+    curl -X POST "http://localhost:8000/api/v1/notifications/send" \
+         -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+         -H "Content-Type: application/json" \
+         -d '{
+               "user_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+               "event_type": "listing_approved",
+               "context": {
+                 "property_title": "Rate Limit Test",
+                 "location": "Fast Lane"
+               }
+             }'
+    ```
+
+3.  **Simulate SES Failure (requires temporarily invalidating AWS credentials):**
+    To demonstrate SES failure and the retry mechanism, you can temporarily provide invalid AWS credentials in your `.env` file (e.g., `AWS_ACCESS_KEY_ID="INVALID"`). Then send a notification. It will initially fail, and if retries are triggered, they will also fail until valid credentials are restored.
+
 ## Deployment on AWS ECS/Fargate
+
 
 The `Dockerfile` is configured for containerized deployment. You can build and push this image to AWS ECR, then deploy it as a service on AWS ECS/Fargate. Ensure your ECS Task Definition includes the necessary environment variables from `.env` and IAM roles for AWS SES access.
 
