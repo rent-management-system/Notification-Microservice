@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     logger.info("Scheduler shut down.")
 
     # Close FastAPI-Limiter
-    await FastAPILimiter.close()
+    await FastAPILimiter.shutdown()
     logger.info("FastAPI-Limiter closed.")
 
 app = FastAPI(lifespan=lifespan, title="Notification Microservice", version="1.0.0")
