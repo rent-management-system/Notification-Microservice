@@ -1,104 +1,80 @@
 import pytest
-from httpx import AsyncClient
-from uuid import UUID
-import json
-
-# This file is for demonstrating error scenarios, not comprehensive unit tests.
-# It uses the client fixture to interact with the FastAPI app.
+from uuid import uuid4, UUID
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.services.notification import send_notification_service
+from app.models.notification import Notification
 
 @pytest.mark.asyncio
-async def test_demo_send_notification_invalid_user_id(client: AsyncClient, mock_user_management_verify):
-    """Demonstrates sending a notification for a non-existent user, resulting in FAILED status."""
-    invalid_user_id = UUID("00000000-0000-0000-0000-000000000000") # A user ID that won't be found
-    event_type = "payment_success"
-    context = {"property_title": "Demo Property", "location": "Demo Location", "amount": 999}
+async def test_send_notification_invalid_user_id(db_session: AsyncSession):
+    """
+    Tests that sending a notification to a non-existent user ID
+    results in a ValueError and a FAILED notification record.
+    """
+    invalid_user_id = uuid4()
+    with pytest.raises(ValueError, match=f"User with ID {invalid_user_id} not found."):
+        await send_notification_service(
+            db_session,
+            invalid_user_id,
+            "payment_success",
+            {"amount": 100, "property_title": "Apartment", "location": "Bole"}
+        )
 
-    # Mock user management to return 404 for this specific user ID
-    mock_user_management_verify.json.return_value = None
-    mock_user_management_verify.status_code = 404
-
-    response = await client.post(
-        "/api/v1/notifications/send",
-        headers=
-            "Authorization": "Bearer test_token"
-        },
-        json={
-            "user_id": str(invalid_user_id),
-            "event_type": event_type,
-            "context": context
-        }
+    # Verify that a FAILED notification was logged
+    notification = await db_session.execute(
+        "SELECT * FROM notifications WHERE user_id = :user_id",
+        {"user_id": invalid_user_id}
     )
-
-    assert response.status_code == 404
-    assert "User with ID" in response.json()["detail"]
-    print(f"\nDEMO SCENARIO: Send notification for invalid user_id. Response: {response.json()}")
+    notification = notification.first()
+    assert notification is not None
+    assert notification.status == "FAILED"
 
 @pytest.mark.asyncio
-async def test_demo_send_notification_ses_failure(client: AsyncClient, mock_user_management_verify, mock_ses_send_email, mock_sms_send):
-    """Demonstrates sending a notification where SES fails, leading to FAILED status and retry."""
+async def test_send_notification_ses_failure(db_session: AsyncSession, mocker):
+    """
+    Tests that a notification is marked as FAILED if AWS SES fails to send the email.
+    """
+    # Mock the SES client to raise an exception
+    mocker.patch("boto3.client.send_email", side_effect=Exception("Rate limit exceeded"))
+
+    # Use a valid user ID from conftest.py
     user_id = UUID("123e4567-e89b-12d3-a456-426614174000")
-    event_type = "listing_approved"
-    context = {"property_title": "SES Fail Demo", "location": "Cloud City"}
 
-    # Simulate SES failure
-    mock_ses_send_email.send_email.side_effect = Exception("Mock SES API Error")
-
-    response = await client.post(
-        "/api/v1/notifications/send",
-        headers={
-            "Authorization": "Bearer test_token"
-        },
-        json={
-            "user_id": str(user_id),
-            "event_type": event_type,
-            "context": context
-        }
+    notification = await send_notification_service(
+        db_session,
+        user_id,
+        "listing_approved",
+        {"property_title": "Apartment", "location": "Bole"}
     )
 
-    assert response.status_code == 500 # Internal server error due to send failure
-    assert "Failed to send notification" in response.json()["detail"]
-    print(f"\nDEMO SCENARIO: Send notification with SES failure. Response: {response.json()}")
-
-    # Reset mock for subsequent tests if any
-    mock_ses_send_email.send_email.side_effect = None
+    assert notification.status == "FAILED"
+    assert notification.user_id == user_id
 
 @pytest.mark.asyncio
-async def test_demo_rate_limit_exceeded(client: AsyncClient, mock_user_management_verify, mocker):
-    """Demonstrates hitting the rate limit on the /send endpoint."""
+async def test_retry_notification_permanent_failure(db_session: AsyncSession, mocker):
+    """
+    Tests that a notification permanently fails after 3 retry attempts.
+    """
+    # Mock the SES client to always fail
+    mocker.patch("boto3.client.send_email", side_effect=Exception("Permanent SES failure"))
+
+    # Create a failed notification with 2 attempts already
     user_id = UUID("123e4567-e89b-12d3-a456-426614174000")
-    event_type = "payment_success"
-    context = {"property_title": "Rate Limit Demo", "location": "Fast Lane", "amount": 100}
-
-    # Mock the rate limiter to immediately hit the limit for testing purposes
-    # This is a bit hacky for a demo, in real tests you'd send many requests.
-    # For demonstration, we'll mock the limiter's check function.
-    mocker.patch("fastapi_limiter.FastAPILimiter.check", return_value=False)
-
-    # Mock the logger to capture calls
-    mock_logger_warning = mocker.patch("app.main.logger.warning")
-
-    response = await client.post(
-        "/api/v1/notifications/send",
-        headers={
-            "Authorization": "Bearer test_token"
-        },
-        json={
-            "user_id": str(user_id),
-            "event_type": event_type,
-            "context": context
-        }
+    failed_notification = Notification(
+        id=uuid4(),
+        user_id=user_id,
+        event_type="payment_failed",
+        status="FAILED",
+        attempts=2,
+        context={"amount": 500}
     )
+    db_session.add(failed_notification)
+    await db_session.commit()
 
-    assert response.status_code == 429 # Too Many Requests
-    assert "Too Many Requests" in response.json()["detail"]
-    mock_logger_warning.assert_called_once_with(
-        "Rate limit exceeded",
-        ip_address=mocker.ANY,
-        pkey=mocker.ANY,
-        event="rate_limit_exceeded"
-    )
-    print(f"\nDEMO SCENARIO: Rate limit exceeded. Response: {response.json()}")
+    # Import retry function here to avoid circular dependency issues at module level
+    from app.services.notification import retry_failed_notifications
+    await retry_failed_notifications(db_session)
 
-    # Reset mock
-    mocker.patch("fastapi_limiter.FastAPILimiter.check").stop()
-    mock_logger_warning.stop() # Stop the logger mock
+    # Verify the notification is still FAILED and attempts is now 3
+    updated_notification = await db_session.get(Notification, failed_notification.id)
+    assert updated_notification.status == "FAILED"
+    assert updated_notification.attempts == 3
