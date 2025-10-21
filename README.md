@@ -193,7 +193,19 @@ This microservice handles sending notifications (email, SMS) for a Rental Manage
 
 To showcase the robustness and error handling of the microservice, you can simulate the following scenarios:
 
-1.  **Send to a Non-Existent User (will result in FAILED notification log):**
+1.  **Unauthorized Access (403 Forbidden):**
+    Attempt to access an admin-only endpoint (e.g., `/stats`) with a non-admin JWT token.
+
+    ```bash
+    # Ensure you have a non-admin JWT token for this test
+    curl -X GET "http://localhost:8000/api/v1/notifications/stats" \
+         -H "Authorization: Bearer YOUR_NON_ADMIN_JWT_TOKEN"
+    ```
+    *Expected Response:* `{"detail":"Forbidden"}`
+
+2.  **Send to a Non-Existent User (404 Not Found):**
+    Attempt to send a notification to a `user_id` that does not exist in the `Users` table.
+
     ```bash
     curl -X POST "http://localhost:8000/api/v1/notifications/send" \
          -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
@@ -208,27 +220,33 @@ To showcase the robustness and error handling of the microservice, you can simul
                }
              }'
     ```
-    *(This will log a FAILED notification in the database as the user cannot be found.)*
+    *Expected Response:* `{"detail":"User with ID 00000000-0000-0000-0000-000000000000 not found."}`
+    *(This will also log a FAILED notification in the database.)*
 
-2.  **Trigger Rate Limit (send more than 10 requests/minute to `/send`):**
-    Rapidly execute the `POST /api/v1/notifications/send` command more than 10 times within a minute. Subsequent requests will receive a `429 Too Many Requests` error.
+3.  **Trigger Rate Limit (429 Too Many Requests):**
+    Rapidly execute the `POST /api/v1/notifications/send` command more than 10 times within a minute.
+
     ```bash
-    # Example of a request that will eventually be rate-limited
-    curl -X POST "http://localhost:8000/api/v1/notifications/send" \
-         -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
-         -H "Content-Type: application/json" \
-         -d '{
-               "user_id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-               "event_type": "listing_approved",
-               "context": {
-                 "property_title": "Rate Limit Test",
-                 "location": "Fast Lane"
-               }
-             }'
+    # Run this command in a loop or multiple times in quick succession
+    for i in {1..15}; do
+      curl -X POST "http://localhost:8000/api/v1/notifications/send" \
+           -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+           -H "Content-Type: application/json" \
+           -d '{
+                 "user_id": "123e4567-e89b-12d3-a456-426614174000",
+                 "event_type": "listing_approved",
+                 "context": { "property_title": "Rate Limit Test", "location": "Fast Lane" }
+               }' &
+    done
     ```
+    *Expected Response (after 10 requests):* `{"error":"Too Many Requests"}`
 
-3.  **Simulate SES Failure (requires temporarily invalidating AWS credentials):**
-    To demonstrate SES failure and the retry mechanism, you can temporarily provide invalid AWS credentials in your `.env` file (e.g., `AWS_ACCESS_KEY_ID="INVALID"`). Then send a notification. It will initially fail, and if retries are triggered, they will also fail until valid credentials are restored.
+4.  **Simulate SES Failure and Retry:**
+    To demonstrate SES failure and the retry mechanism, you can temporarily provide invalid AWS credentials in your `.env` file (e.g., `AWS_ACCESS_KEY_ID="INVALID"`).
+    - Send a notification. The initial request will hang for a moment and then log a `FAILED` notification.
+    - The `apscheduler` job running `retry_failed_notifications` will automatically pick up this failed notification every 5 minutes.
+    - Check the logs to see the retry attempts. After 3 failed attempts, the notification will be permanently marked as failed.
+
 
 ## Deployment on AWS ECS/Fargate
 
