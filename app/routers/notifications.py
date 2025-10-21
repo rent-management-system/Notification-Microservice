@@ -5,7 +5,7 @@ from app.schemas.notification import NotificationCreate, NotificationResponse, N
 from app.services.notification import send_notification_service, get_notification_by_id, get_notifications_filtered, retry_failed_notifications, get_notification_stats
 from app.dependencies.auth import get_admin_or_internal_user, get_admin_user
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.main import get_db
+from app.database import get_db
 from fastapi_limiter.depends import RateLimiter
 from app.core.logging import logger # Import logger
 
