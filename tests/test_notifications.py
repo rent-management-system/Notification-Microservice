@@ -7,6 +7,7 @@ from app.schemas.notification import NotificationResponse
 from app.services.notification import send_notification_service, get_notification_by_id, get_notifications_filtered, retry_failed_notifications
 from datetime import datetime, timedelta
 import json
+import logging
 
 @pytest.mark.asyncio
 async def test_send_notification_success(client: AsyncClient, db_session: AsyncSession, mock_user_management_verify, mock_ses_send_email, mock_sms_send):

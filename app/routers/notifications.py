@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from uuid import UUID
 from typing import List, Optional
 from app.schemas.notification import NotificationCreate, NotificationResponse, NotificationStatsResponse
@@ -6,10 +6,19 @@ from app.services.notification import send_notification_service, get_notificatio
 from app.dependencies.auth import get_admin_or_internal_user, get_admin_user
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.main import get_db
+from fastapi_limiter.depends import RateLimiter
+from app.core.logging import logger # Import logger
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 
-@router.post("/send", response_model=NotificationResponse, status_code=status.HTTP_202_ACCEPTED)
+async def rate_limit_callback(request: Request, exc: HTTPException):
+    """Custom callback for rate limit exceeded."""
+    client_ip = request.client.host if request.client else "unknown"
+    logger.warning("Rate limit exceeded", event="rate_limit_exceeded", ip=client_ip, path=request.url.path)
+    raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too Many Requests")
+
+@router.post("/send", response_model=NotificationResponse, status_code=status.HTTP_202_ACCEPTED,
+             dependencies=[Depends(RateLimiter(times=10, seconds=60, callback=rate_limit_callback))]) # Apply rate limiting here
 async def send_notification_endpoint(
     notification: NotificationCreate,
     current_user: dict = Depends(get_admin_or_internal_user),
