@@ -1,9 +1,9 @@
 import asyncio
-import logging
+import structlog
 from functools import wraps
 from datetime import datetime, timedelta
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 class CircuitBreaker:
     def __init__(self, failure_threshold=5, reset_timeout=60):
@@ -16,17 +16,17 @@ class CircuitBreaker:
     def _open(self):
         self.state = "OPEN"
         self.last_failure_time = datetime.utcnow()
-        logger.warning("Circuit Breaker OPEN", event="circuit_breaker_state_change", state=self.state)
+        logger.warning("Circuit Breaker OPEN", event="circuit_breaker_state_change", state=self.state, service="SES")
 
     def _half_open(self):
         self.state = "HALF_OPEN"
-        logger.info("Circuit Breaker HALF-OPEN", event="circuit_breaker_state_change", state=self.state)
+        logger.info("Circuit Breaker HALF-OPEN", event="circuit_breaker_state_change", state=self.state, service="SES")
 
     def _close(self):
         self.state = "CLOSED"
         self.failures = 0
         self.last_failure_time = None
-        logger.info("Circuit Breaker CLOSED", event="circuit_breaker_state_change", state=self.state)
+        logger.info("Circuit Breaker CLOSED", event="circuit_breaker_state_change", state=self.state, service="SES")
 
     def __call__(self, func):
         @wraps(func)
@@ -35,7 +35,7 @@ class CircuitBreaker:
                 if (datetime.utcnow() - self.last_failure_time).total_seconds() > self.reset_timeout:
                     self._half_open()
                 else:
-                    logger.warning("Circuit Breaker OPEN, blocking call", event="circuit_breaker_blocked")
+                    logger.warning("Circuit Breaker OPEN, blocking call", event="circuit_breaker_blocked", service="SES")
                     raise CircuitBreakerOpenException("Circuit breaker is open")
 
             try:
@@ -46,7 +46,7 @@ class CircuitBreaker:
             except Exception as e:
                 self.failures += 1
                 self.last_failure_time = datetime.utcnow()
-                logger.warning("Circuit Breaker failure recorded", failures=self.failures, state=self.state)
+                logger.warning("Circuit Breaker failure recorded", event="circuit_breaker_failure", failures=self.failures, state=self.state, service="SES")
                 if self.state == "HALF_OPEN" or self.failures >= self.failure_threshold:
                     self._open()
                 raise e
@@ -63,7 +63,7 @@ def async_retry(tries=3, delay=1, backoff=2, exceptions=(Exception,), circuit_br
                 if (datetime.utcnow() - circuit_breaker.last_failure_time).total_seconds() > circuit_breaker.reset_timeout:
                     circuit_breaker._half_open()
                 else:
-                    logger.warning("Circuit Breaker OPEN, blocking retry attempt", event="circuit_breaker_blocked_retry")
+                    logger.warning("Circuit Breaker OPEN, blocking retry attempt", event="circuit_breaker_blocked_retry", service="SES")
                     raise CircuitBreakerOpenException("Circuit breaker is open, blocking retry")
 
             mtries, mdelay = tries, delay
@@ -74,7 +74,7 @@ def async_retry(tries=3, delay=1, backoff=2, exceptions=(Exception,), circuit_br
                     else:
                         return await func(*args, **kwargs)
                 except exceptions as e:
-                    logger.warning(f"Exception: {e}, Retrying in {mdelay} seconds...", error_type=type(e).__name__)
+                    logger.warning("Exception during retry", event="retry_exception", error=str(e), delay=mdelay, error_type=type(e).__name__, service="SES")
                     await asyncio.sleep(mdelay)
                     mtries -= 1
                     mdelay *= backoff
