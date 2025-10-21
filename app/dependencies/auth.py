@@ -23,8 +23,8 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     # Verify token with User Management Microservice
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(
-                f"{settings.USER_MANAGEMENT_URL}/auth/verify",
+            response = await client.get(
+                f"{settings.USER_MANAGEMENT_URL}/api/v1/auth/verify",
                 headers={
                     "Authorization": f"Bearer {token}"
                 }
