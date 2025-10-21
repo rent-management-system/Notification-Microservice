@@ -11,3 +11,6 @@ fastapi-limiter==0.1.5
 boto3==1.28.83
 python-dotenv==1.0.0
 psycopg2-binary==2.9.9
+pytest==7.4.2
+
+pydantic-settings==2.11.0

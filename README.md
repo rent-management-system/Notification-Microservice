@@ -13,6 +13,30 @@ This microservice handles sending notifications (email, SMS) for a Rental Manage
 - Asynchronous operations with `asyncpg` and `FastAPI`.
 - Retry mechanism for failed notification sends.
 
+## Demo Flow Diagram
+
+```
++-------------------+     +-------------------+     +-------------------+
+|   User Service    |     |  Payment Service  |     |  Property Service |
+| (Manages Users)   |     | (Handles Payments)|     | (Manages Listings)|
++---------+---------+     +---------+---------+     +---------+---------+
+          |                       |                       |
+          | 1. User Registration  | 2. Payment Event      | 3. Listing Update
+          | (New User)            | (Success/Failure)     | (Approval/Change)
+          v                       v                       v
++-----------------------------------------------------------------------+
+|                     Notification Microservice                         |
+| (Sends Emails/SMS based on events, integrates with external services) |
++-----------------------------------------------------------------------+
+          |
+          | 4. Notification Trigger (Internal API Call)
+          v
++-------------------+     +-------------------+
+|     AWS SES       |     |     Mock SMS      |
+| (Sends Emails)    |     | (Simulates SMS)   |
++-------------------+     +-------------------+
+```
+
 ## Technologies Used
 
 - Python 3.10+
@@ -142,6 +166,57 @@ This microservice handles sending notifications (email, SMS) for a Rental Manage
     ]
     ```
 
+### Get Notification Statistics
+
+-   **Method:** `GET`
+-   **Path:** `/api/v1/notifications/stats`
+-   **Permissions:** Admin
+-   **Description:** Retrieves aggregated statistics about notifications.
+-   **Example Response:**
+    ```json
+    {
+        "total_notifications": 105,
+        "total_sent": 50,
+        "total_failed": 30,
+        "total_pending": 25,
+        "by_status": {
+            "SENT": 50,
+            "FAILED": 30,
+            "PENDING": 25
+        },
+        "by_event_type": {
+            "payment_success": {
+                "SENT": 20,
+                "FAILED": 10,
+                "PENDING": 5
+            },
+            "listing_approved": {
+                "SENT": 15,
+                "FAILED": 5,
+                "PENDING": 10
+            },
+            "payment_failed": {
+                "SENT": 5,
+                "FAILED": 10,
+                "PENDING": 5
+            },
+            "tenant_update": {
+                "SENT": 10,
+                "FAILED": 5,
+                "PENDING": 5
+            }
+        }
+    }
+    ```
+
+    **ASCII Chart (Sample Data):**
+    ```
+    Total:   |||||||||| 105
+    Sent:    ||||||||| 50
+    Failed:  |||||| 30
+    Pending: ||||| 25
+    ```
+
 ### Retry Failed Notifications
 
 -   **Method:** `POST`
@@ -189,7 +264,80 @@ This microservice handles sending notifications (email, SMS) for a Rental Manage
     ```
     *(This endpoint is typically called by `apscheduler` internally, but can be triggered manually for testing.)*
 
+### Demonstrating Error Scenarios
+
+To showcase the robustness and error handling of the microservice, you can simulate the following scenarios:
+
+1.  **Unauthorized Access (403 Forbidden):**
+    Attempt to access an admin-only endpoint (e.g., `/stats`) with a non-admin JWT token.
+
+    ```bash
+    # Ensure you have a non-admin JWT token for this test
+    curl -X GET "http://localhost:8000/api/v1/notifications/stats" \
+         -H "Authorization: Bearer YOUR_NON_ADMIN_JWT_TOKEN"
+    ```
+    *Expected Response:* `{"detail":"Forbidden"}`
+
+2.  **Send to a Non-Existent User (404 Not Found):**
+    Attempt to send a notification to a `user_id` that does not exist in the `Users` table.
+
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/notifications/send" \
+         -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+         -H "Content-Type: application/json" \
+         -d '{
+               "user_id": "00000000-0000-0000-0000-000000000000",
+               "event_type": "payment_success",
+               "context": {
+                 "property_title": "Non-existent User Test",
+                 "location": "Unknown",
+                 "amount": 100
+               }
+             }'
+    ```
+    *Expected Response:* `{"detail":"User with ID 00000000-0000-0000-0000-000000000000 not found."}`
+    *(This will also log a FAILED notification in the database.)*
+
+3.  **Trigger Rate Limit (429 Too Many Requests):**
+    Rapidly execute the `POST /api/v1/notifications/send` command more than 10 times within a minute.
+
+    ```bash
+    # Run this command in a loop or multiple times in quick succession
+    for i in {1..15}; do
+      curl -X POST "http://localhost:8000/api/v1/notifications/send" \
+           -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+           -H "Content-Type: application/json" \
+           -d '{
+                 "user_id": "123e4567-e89b-12d3-a456-426614174000",
+                 "event_type": "listing_approved",
+                 "context": { "property_title": "Rate Limit Test", "location": "Fast Lane" }
+               }' &
+    done
+    ```
+    *Expected Response (after 10 requests):* `{"error":"Too Many Requests"}`
+
+    **Rate Limit Error Example:**
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/notifications/send" \
+         -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+         -H "Content-Type: application/json" \
+         -d '{
+               "user_id": "123e4567-e89b-12d3-a456-426614174000",
+               "event_type": "payment_success",
+               "context": {"amount": 100}
+             }'
+    ```
+    *Expected Response:* `{"detail": "Too Many Requests"}`
+
+4.  **Simulate SES Failure and Retry:**
+    To demonstrate SES failure and the retry mechanism, you can temporarily provide invalid AWS credentials in your `.env` file (e.g., `AWS_ACCESS_KEY_ID="INVALID"`).
+    - Send a notification. The initial request will hang for a moment and then log a `FAILED` notification.
+    - The `apscheduler` job running `retry_failed_notifications` will automatically pick up this failed notification every 5 minutes.
+    - Check the logs to see the retry attempts. After 3 failed attempts, the notification will be permanently marked as failed.
+
+
 ## Deployment on AWS ECS/Fargate
+
 
 The `Dockerfile` is configured for containerized deployment. You can build and push this image to AWS ECR, then deploy it as a service on AWS ECS/Fargate. Ensure your ECS Task Definition includes the necessary environment variables from `.env` and IAM roles for AWS SES access.
 
