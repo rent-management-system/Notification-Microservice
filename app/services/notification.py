@@ -37,9 +37,9 @@ NOTIFICATION_TEMPLATES = load_notification_templates()
 
 # Mock SMS sending function
 async def send_sms_mock(phone_number: str, message: str):
-    logger.info("Mock SMS sent", phone_number=phone_number, message=message)
+    logger.info("Mock SMS sent", event="mock_sms_sent", phone_number=phone_number, message=message)
     await asyncio.sleep(0.1) # Simulate network delay
-    return True
+    return {"status": "success", "message_id": str(uuid4())}
 
 async def send_admin_alert_email(subject: str, body: str):
     ses_client = boto3.client(
