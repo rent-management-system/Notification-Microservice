@@ -11,17 +11,10 @@ from app.services.notification import retry_failed_notifications
 from fastapi_limiter import FastAPILimiter
 from redis.asyncio import Redis
 import os
+from app.database import AsyncSessionLocal # Import AsyncSessionLocal
 
 # Configure logging
 configure_logging()
-
-# Database setup
-engine = create_async_engine(settings.DATABASE_URL, echo=True)
-AsyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
-
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
 
 # Scheduler setup
 scheduler = AsyncIOScheduler()
