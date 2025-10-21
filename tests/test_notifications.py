@@ -139,3 +139,88 @@ async def test_circuit_breaker_half_open_and_reopen(mocker, caplog):
         with pytest.raises(CircuitBreakerOpenException):
             await send_email_ses(recipient, subject, body)
         assert "Circuit Breaker OPEN, blocking call" in caplog.text
+
+@pytest.mark.asyncio
+async def test_template_version_logged_on_send(mocker, caplog, mock_db_session):
+    from app.services.notification import send_notification_service, NOTIFICATION_TEMPLATES
+    from app.schemas.notification import NotificationCreate
+    from uuid import UUID
+    import logging
+
+    # Mock external dependencies
+    mocker.patch("app.services.notification.get_user_details_from_user_management", return_value={
+        "email": "test@example.com", "phone_number": "+251911123456", "preferred_language": "en"
+    })
+    mocker.patch("app.services.notification.send_email_ses", return_value="mock-ses-id")
+    mocker.patch("app.services.notification.send_sms_mock", return_value=True)
+
+    # Ensure template version is set for the test
+    NOTIFICATION_TEMPLATES["version"] = "1.0"
+
+    notification_data = NotificationCreate(
+        user_id=UUID("123e4567-e89b-12d3-a456-426614174000"),
+        event_type="payment_success",
+        context={"property_title": "Test Property", "location": "Addis Ababa", "amount": 1000}
+    )
+
+    with caplog.at_level(logging.INFO):
+        await send_notification_service(mock_db_session, notification_data.user_id, notification_data.event_type, notification_data.context)
+        assert "Notification successfully sent" in caplog.text
+        assert "template_version=1.0" in caplog.text
+
+@pytest.mark.asyncio
+async def test_retry_failure_alerts_admin(mocker, caplog, mock_db_session):
+    from app.services.notification import retry_failed_notifications, Notification
+    from uuid import UUID
+    from datetime import datetime
+    import logging
+
+    # Mock SES client to always fail for resend attempts
+    mocker.patch("app.services.notification.send_email_ses", side_effect=ClientError({"Error": {"Code": "Throttling"}}, "SendEmail"))
+    mocker.patch("app.services.notification.send_sms_mock", return_value=False) # SMS also fails
+    
+    # Mock the admin alert email function
+    mock_send_admin_alert_email = mocker.patch("app.services.notification.send_admin_alert_email", return_value="mock-admin-ses-id")
+
+    # Create a failed notification that has reached its retry limit (attempts = 2, so next will be 3)
+    failed_notification = Notification(
+        id=UUID("a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99"),
+        user_id=UUID("123e4567-e89b-12d3-a456-426614174000"),
+        event_type="payment_failed",
+        status="FAILED",
+        attempts=2,
+        context={"property_title": "Failed Property", "location": "Addis Ababa", "amount": 500},
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    mock_db_session.add(failed_notification)
+    await mock_db_session.commit()
+    await mock_db_session.refresh(failed_notification)
+
+    # Mock the select query to return our failed notification
+    mocker.patch("sqlalchemy.ext.asyncio.AsyncSession.execute", return_value=mocker.AsyncMock(
+        scalars=mocker.Mock(all=mocker.Mock(return_value=[failed_notification]))
+    ))
+    
+    # Mock get_user_details_from_user_management to succeed
+    mocker.patch("app.services.notification.get_user_details_from_user_management", return_value={
+        "email": "test@example.com", "phone_number": "+251911123456", "preferred_language": "en"
+    })
+
+    with caplog.at_level(logging.CRITICAL):
+        await retry_failed_notifications(mock_db_session)
+        
+        # Assert critical log is present
+        assert "Notification permanently failed after 3 retries" in caplog.text
+        assert f"notification_id={failed_notification.id}" in caplog.text
+        
+        # Assert admin alert email was sent
+        mock_send_admin_alert_email.assert_called_once_with(
+            subject=f"CRITICAL: Notification {failed_notification.id} permanently failed",
+            body=mocker.ANY # Check content more specifically if needed
+        )
+    
+    # Verify notification status is still FAILED after max attempts
+    await mock_db_session.refresh(failed_notification)
+    assert failed_notification.status == "FAILED"
+    assert failed_notification.attempts == 3

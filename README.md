@@ -13,6 +13,30 @@ This microservice handles sending notifications (email, SMS) for a Rental Manage
 - Asynchronous operations with `asyncpg` and `FastAPI`.
 - Retry mechanism for failed notification sends.
 
+## Demo Flow Diagram
+
+```
++-------------------+     +-------------------+     +-------------------+
+|   User Service    |     |  Payment Service  |     |  Property Service |
+| (Manages Users)   |     | (Handles Payments)|     | (Manages Listings)|
++---------+---------+     +---------+---------+     +---------+---------+
+          |                       |                       |
+          | 1. User Registration  | 2. Payment Event      | 3. Listing Update
+          | (New User)            | (Success/Failure)     | (Approval/Change)
+          v                       v                       v
++-----------------------------------------------------------------------+
+|                     Notification Microservice                         |
+| (Sends Emails/SMS based on events, integrates with external services) |
++-----------------------------------------------------------------------+
+          |
+          | 4. Notification Trigger (Internal API Call)
+          v
++-------------------+     +-------------------+
+|     AWS SES       |     |     Mock SMS      |
+| (Sends Emails)    |     | (Simulates SMS)   |
++-------------------+     +-------------------+
+```
+
 ## Technologies Used
 
 - Python 3.10+
@@ -140,6 +164,187 @@ This microservice handles sending notifications (email, SMS) for a Rental Manage
             "sent_at": "datetime"
         }
     ]
+    ```
+
+### Get Notification Statistics
+
+-   **Method:** `GET`
+-   **Path:** `/api/v1/notifications/stats`
+-   **Permissions:** Admin
+-   **Description:** Retrieves aggregated statistics about notifications.
+-   **Example Response:**
+    ```json
+    {
+        "total_notifications": 105,
+        "total_sent": 50,
+        "total_failed": 30,
+        "total_pending": 25,
+        "by_status": {
+            "SENT": 50,
+            "FAILED": 30,
+            "PENDING": 25
+        },
+        "by_event_type": {
+            "payment_success": {
+                "SENT": 20,
+                "FAILED": 10,
+                "PENDING": 5
+            },
+            "listing_approved": {
+                "SENT": 15,
+                "FAILED": 5,
+                "PENDING": 10
+            },
+            "payment_failed": {
+                "SENT": 5,
+                "FAILED": 10,
+                "PENDING": 5
+            },
+            "tenant_update": {
+                "SENT": 10,
+                "FAILED": 5,
+                "PENDING": 5
+            }
+        }
+    }
+    ```
+
+### Retry Failed Notifications
+
+-   **Method:** `POST`
+-   **Path:** `/api/v1/notifications/retry`
+-   **Permissions:** Internal (typically called by a cron job)
+-   **Description:** Retries sending failed notifications.
+
+## Demo Flow Diagram
+
+```
++-------------------+     +-------------------+     +-------------------+
+|   User Service    |     |  Payment Service  |     |  Property Service |
+| (Manages Users)   |     | (Handles Payments)|     | (Manages Listings)|
++---------+---------+     +---------+---------+     +---------+---------+
+          |                       |                       |
+          | 1. User Registration  | 2. Payment Event      | 3. Listing Update
+          | (New User)            | (Success/Failure)     | (Approval/Change)
+          v                       v                       v
++-----------------------------------------------------------------------+
+|                     Notification Microservice                         |
+| (Sends Emails/SMS based on events, integrates with external services) |
++-----------------------------------------------------------------------+
+          |
+          | 4. Notification Trigger (Internal API Call)
+          v
++-------------------+     +-------------------+
+|     AWS SES       |     |     Mock SMS      |
+| (Sends Emails)    |     | (Simulates SMS)   |
++-------------------+     +-------------------+
+```
+
+## API Endpoints
+
+### Send Notification
+
+-   **Method:** `POST`
+-   **Path:** `/api/v1/notifications/send`
+-   **Permissions:** Admin or Internal Services
+-   **Description:** Sends an email/SMS notification for a specific event to a user.
+-   **Parameters (Request Body):**
+    ```json
+    {
+        "user_id": "UUID",
+        "event_type": "str",
+        "context": "dict"
+    }
+    ```
+    Example `context`: `{"property_title": "Luxury Apartment", "location": "Addis Ababa", "amount": 1500}`
+-   **Example Response:**
+    ```json
+    {
+        "status": "sent",
+        "notification_id": "UUID"
+    }
+    ```
+
+### Get Notification by ID
+
+-   **Method:** `GET`
+-   **Path:** `/api/v1/notifications/{id}`
+-   **Permissions:** Admin
+-   **Description:** Retrieves details of a specific notification.
+-   **Example Response:**
+    ```json
+    {
+        "id": "UUID",
+        "user_id": "UUID",
+        "event_type": "str",
+        "status": "str",
+        "sent_at": "datetime"
+    }
+    ```
+
+### Get All Notifications
+
+-   **Method:** `GET`
+-   **Path:** `/api/v1/notifications`
+-   **Permissions:** Admin
+-   **Description:** Retrieves a list of notifications, with optional filtering.
+-   **Query Parameters:**
+    -   `user_id`: `UUID` (Optional)
+    -   `event_type`: `str` (Optional)
+-   **Example Response:**
+    ```json
+    [
+        {
+            "id": "UUID",
+            "user_id": "UUID",
+            "event_type": "str",
+            "status": "str",
+            "sent_at": "datetime"
+        }
+    ]
+    ```
+
+### Get Notification Statistics
+
+-   **Method:** `GET`
+-   **Path:** `/api/v1/notifications/stats`
+-   **Permissions:** Admin
+-   **Description:** Retrieves aggregated statistics about notifications.
+-   **Example Response:**
+    ```json
+    {
+        "total_notifications": 105,
+        "total_sent": 50,
+        "total_failed": 30,
+        "total_pending": 25,
+        "by_status": {
+            "SENT": 50,
+            "FAILED": 30,
+            "PENDING": 25
+        },
+        "by_event_type": {
+            "payment_success": {
+                "SENT": 20,
+                "FAILED": 10,
+                "PENDING": 5
+            },
+            "listing_approved": {
+                "SENT": 15,
+                "FAILED": 5,
+                "PENDING": 10
+            },
+            "payment_failed": {
+                "SENT": 5,
+                "FAILED": 10,
+                "PENDING": 5
+            },
+            "tenant_update": {
+                "SENT": 10,
+                "FAILED": 5,
+                "PENDING": 5
+            }
+        }
+    }
     ```
 
 ### Retry Failed Notifications

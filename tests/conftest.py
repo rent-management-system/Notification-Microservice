@@ -19,34 +19,8 @@ async def db_engine():
     engine = create_async_engine(TEST_DATABASE_URL, echo=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Create a mock Users table for testing purposes
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS Users (
-                id UUID PRIMARY KEY,
-                email VARCHAR(255) NOT NULL,
-                phone_number VARCHAR(50),
-                preferred_language VARCHAR(10) DEFAULT 'en'
-            );
-        """)
-        # Insert a mock user for testing
-        await conn.execute("""
-            INSERT INTO Users (id, email, phone_number, preferred_language) VALUES
-            ('123e4567-e89b-12d3-a456-426614174000', 'test@example.com', '+251911123456', 'en')
-            ON CONFLICT (id) DO NOTHING;
-        """)
-        await conn.execute("""
-            INSERT INTO Users (id, email, phone_number, preferred_language) VALUES
-            ('123e4567-e89b-12d3-a456-426614174001', 'amharic@example.com', '+251911123457', 'am')
-            ON CONFLICT (id) DO NOTHING;
-        """)
-        await conn.execute("""
-            INSERT INTO Users (id, email, phone_number, preferred_language) VALUES
-            ('123e4567-e89b-12d3-a456-426614174002', 'oromo@example.com', '+251911123458', 'om')
-            ON CONFLICT (id) DO NOTHING;
-        """)
     yield engine
     async with engine.begin() as conn:
-        await conn.execute("DROP TABLE IF EXISTS Users CASCADE;")
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
@@ -78,6 +52,27 @@ def mock_user_management_verify(mocker):
     }
     mocker.patch("httpx.AsyncClient.post", return_value=mock_response)
     return mock_response
+
+@pytest.fixture
+def mock_user_management_get(mocker):
+    # Mock the httpx.AsyncClient.get call for user details retrieval
+    mock_response = mocker.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "email": "test@example.com",
+        "phone_number": "+251911123456",
+        "preferred_language": "en"
+    }
+    mocker.patch("httpx.AsyncClient.get", return_value=mock_response)
+    return mock_response
+
+@pytest.fixture
+def mock_redis_client(mocker):
+    mock_redis = mocker.Mock()
+    mock_redis.get.return_value = None # Default to cache miss
+    mock_redis.setex.return_value = True
+    mocker.patch("app.services.notification.redis_client", new=mock_redis)
+    return mock_redis
 
 @pytest.fixture
 def mock_ses_send_email(mocker):

@@ -41,6 +41,30 @@ async def send_sms_mock(phone_number: str, message: str):
     await asyncio.sleep(0.1) # Simulate network delay
     return True
 
+async def send_admin_alert_email(subject: str, body: str):
+    ses_client = boto3.client(
+        "ses",
+        region_name=settings.AWS_REGION_NAME,
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY
+    )
+    try:
+        response = ses_client.send_email(
+            Source="no-reply@rental-system.com",
+            Destination={'ToAddresses': [settings.ADMIN_EMAIL]},
+            Message={
+                'Subject': {'Data': subject},
+                'Body': {'Text': {'Data': body}}
+            }
+        )
+        message_id = response['MessageId']
+        logger.info("Admin alert email sent via SES", message_id=message_id, recipient=settings.ADMIN_EMAIL)
+        return message_id
+    except ClientError as e:
+        logger.error("Admin alert email send failed", error=str(e), recipient=settings.ADMIN_EMAIL)
+        # Do not re-raise, as this is an alert for another failure, we don't want to block the retry process
+        return None
+
 @async_retry(tries=3, delay=2, backoff=2, circuit_breaker=ses_circuit_breaker)
 async def send_email_ses(recipient_email: str, subject: str, body: str) -> str:
     ses_client = boto3.client(
@@ -148,7 +172,8 @@ async def send_notification_service(db: AsyncSession, user_id: UUID, event_type:
         sent_at = datetime.utcnow()
         if ses_message_id:
             context["ses_message_id"] = ses_message_id
-        logger.info("Notification successfully sent", notification_id=notification_id, user_id=user_id, event_type=event_type)
+        template_version = NOTIFICATION_TEMPLATES.get("version", "unknown")
+        logger.info("Notification successfully sent", notification_id=notification_id, user_id=user_id, event_type=event_type, template_version=template_version)
 
     except Exception as e:
         status = "FAILED"
@@ -195,9 +220,21 @@ async def retry_failed_notifications(db: AsyncSession):
 
     for notification in failed_notifications:
         # Idempotency check: if already sent and MessageId exists, skip
-        if notification.status == "SENT" and notification.context.get("ses_message_id"):
-            logger.info("Notification already sent and has SES MessageId, skipping retry", notification_id=notification.id)
-            continue
+        if notification.context.get("ses_message_id"):
+            if notification.status == "SENT":
+                logger.info("Notification already sent and has SES MessageId, skipping retry", notification_id=notification.id)
+                continue
+            elif notification.status == "FAILED":
+                # If SES MessageId exists but status is FAILED, it means the email was sent but DB update failed.
+                # Mark as SENT and skip resending.
+                notification.status = "SENT"
+                notification.sent_at = datetime.utcnow()
+                notification.updated_at = datetime.utcnow()
+                db.add(notification)
+                await db.commit()
+                await db.refresh(notification)
+                logger.info("Notification found with SES MessageId but FAILED status, updated to SENT", notification_id=notification.id)
+                continue
 
         notification.attempts += 1
         notification.updated_at = datetime.utcnow()
@@ -210,6 +247,12 @@ async def retry_failed_notifications(db: AsyncSession):
             user = await get_user_details_from_user_management(notification.user_id)
             if not user:
                 logger.error("User not found during retry, cannot send notification", notification_id=notification.id)
+                if notification.attempts >= 3:
+                    logger.critical("Notification permanently failed after 3 retries due to user not found", notification_id=notification.id)
+                    await send_admin_alert_email(
+                        subject=f"CRITICAL: Notification {notification.id} permanently failed",
+                        body=f"Notification {notification.id} for user {notification.user_id} (event: {notification.event_type}) permanently failed after 3 retries. Reason: User not found."
+                    )
                 continue
 
             template = get_notification_template(notification.event_type, user.get("preferred_language", "en"), notification.context)
@@ -236,6 +279,10 @@ async def retry_failed_notifications(db: AsyncSession):
             logger.error("Failed to resend notification", notification_id=notification.id, error=str(e))
             if notification.attempts >= 3:
                 logger.critical("Notification permanently failed after 3 retries", notification_id=notification.id)
+                await send_admin_alert_email(
+                    subject=f"CRITICAL: Notification {notification.id} permanently failed",
+                    body=f"Notification {notification.id} for user {notification.user_id} (event: {notification.event_type}) permanently failed after 3 retries. Reason: {e}"
+                )
 
     logger.info("Finished attempting to retry failed notifications.")
 
