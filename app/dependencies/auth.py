@@ -24,7 +24,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(
-                f"{settings.USER_MANAGEMENT_URL}/api/v1/auth/verify",
+                f"{settings.USER_MANAGEMENT_URL}/auth/verify",
                 headers={
                     "Authorization": f"Bearer {token}"
                 }
