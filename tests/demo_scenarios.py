@@ -6,6 +6,10 @@ from app.models.notification import Notification
 from datetime import datetime
 from sqlalchemy import select
 import logging
+from fastapi import status
+from fastapi_limiter.depends import RateLimiter
+from app.routers.notifications import rate_limit_callback
+from app.main import app # Import the FastAPI app instance
 
 @pytest.mark.asyncio
 async def test_send_notification_invalid_user_id(db_session: AsyncSession):
@@ -244,3 +248,36 @@ async def test_circuit_breaker_logging(mocker, caplog):
         assert "Circuit Breaker CLOSED" in caplog.text
         assert "state='CLOSED'" in caplog.text
         assert "service='SES'" in caplog.text
+
+@pytest.mark.asyncio
+async def test_rate_limit_exceeded_scenario(mocker, client, caplog):
+    """
+    Tests that the rate limiting mechanism correctly triggers a 429 Too Many Requests
+    response and logs the event.
+    """
+    # Mock the rate limiter to allow only 1 request per minute for this test
+    mocker.patch("fastapi_limiter.depends.RateLimiter.__call__", return_value=RateLimiter(times=1, seconds=60))
+    
+    # Mock authentication to allow access
+    mocker.patch("app.dependencies.auth.get_admin_or_internal_user", return_value={"role": "Admin"})
+    
+    # Mock send_notification_service to prevent actual sending
+    mocker.patch("app.services.notification.send_notification_service", return_value=mocker.AsyncMock(id=uuid4()))
+
+    notification_data = {
+        "user_id": str(UUID("123e4567-e89b-12d3-a456-426614174000")),
+        "event_type": "payment_success",
+        "context": {"property_title": "Rate Limit Test", "location": "Fast Lane", "amount": 100}
+    }
+
+    # First request should succeed
+    response = await client.post("/api/v1/notifications/send", json=notification_data)
+    assert response.status_code == status.HTTP_202_ACCEPTED
+
+    # Second request should be rate-limited
+    with caplog.at_level(logging.WARNING):
+        response = await client.post("/api/v1/notifications/send", json=notification_data)
+        assert response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+        assert "Too Many Requests" in response.json()["detail"]
+        assert "Rate limit exceeded" in caplog.text
+        assert "event='rate_limit_exceeded'" in caplog.text

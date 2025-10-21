@@ -316,6 +316,19 @@ To showcase the robustness and error handling of the microservice, you can simul
     ```
     *Expected Response (after 10 requests):* `{"error":"Too Many Requests"}`
 
+    **Rate Limit Error Example:**
+    ```bash
+    curl -X POST "http://localhost:8000/api/v1/notifications/send" \
+         -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+         -H "Content-Type: application/json" \
+         -d '{
+               "user_id": "123e4567-e89b-12d3-a456-426614174000",
+               "event_type": "payment_success",
+               "context": {"amount": 100}
+             }'
+    ```
+    *Expected Response:* `{"detail": "Too Many Requests"}`
+
 4.  **Simulate SES Failure and Retry:**
     To demonstrate SES failure and the retry mechanism, you can temporarily provide invalid AWS credentials in your `.env` file (e.g., `AWS_ACCESS_KEY_ID="INVALID"`).
     - Send a notification. The initial request will hang for a moment and then log a `FAILED` notification.
