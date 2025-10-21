@@ -32,7 +32,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         retry_failed_notifications,
         IntervalTrigger(minutes=5),
-        args=[AsyncSessionLocal()], # Pass a new session for the job
+        args=[], # The job will manage its own session
         id="retry_failed_notifications_job",
         name="Retry Failed Notifications",
         misfire_grace_time=60 # seconds

@@ -208,12 +208,15 @@ async def get_notifications_filtered(db: AsyncSession, user_id: Optional[UUID] =
     result = await db.execute(query)
     return result.scalars().all()
 
-async def retry_failed_notifications(db: AsyncSession):
-    logger.info("Attempting to retry failed notifications...")
-    stmt = select(Notification).filter(
-        Notification.status == "FAILED",
-        Notification.attempts < 3
-    ).limit(10)
+async def retry_failed_notifications():
+    from app.database import AsyncSessionLocal # Import AsyncSessionLocal for job
+
+    async with AsyncSessionLocal() as db:
+        logger.info("Attempting to retry failed notifications...")
+        stmt = select(Notification).filter(
+            Notification.status == "FAILED",
+            Notification.attempts < 3
+        ).limit(10)
 
     result = await db.execute(stmt)
     failed_notifications = result.scalars().all()
