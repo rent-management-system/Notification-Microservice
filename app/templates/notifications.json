@@ -6,9 +6,9 @@
       "om": "Kaffaltiin Milkaa'eera"
     },
     "body": {
-      "en": "Your payment of {amount} ETB for '{property_title}' in {location} was successful. Thank you!",
-      "am": "ክፍያዎ {amount} ብር ለ'{property_title}' በ{location} ተሳክቷል። እናመሰግናለን!",
-      "om": "Kaffaltiin keessan {amount} ETB '{property_title}' {location} keessatti milkaa'eera. Galatoomaa!"
+      "en": "Payment of {amount} ETB succeeded for {property_title} in {location}",
+      "am": "ክፍያ {amount} ብር ለ{property_title} በ{location} ተሳክቷል",
+      "om": "Lakkoofsa {amount} ETB {property_title} {location} keessatti milkaa'e"
     }
   },
   "payment_failed": {
@@ -18,45 +18,33 @@
       "om": "Kaffaltiin Hin Milkoofne"
     },
     "body": {
-      "en": "Your payment of {amount} ETB for '{property_title}' in {location} failed. Please try again.",
-      "am": "ክፍያዎ {amount} ብር ለ'{property_title}' በ{location} አልተሳካም። እባክዎ እንደገና ይሞክሩ።",
-      "om": "Kaffaltiin keessan {amount} ETB '{property_title}' {location} keessatti hin milkoofne. Irra deebi'aa yaalaa."
+      "en": "Payment of {amount} ETB failed for {property_title} in {location}. Please try again.",
+      "am": "ክፍያ {amount} ብር ለ{property_title} በ{location} አልተሳካም። እባክዎ እንደገና ይሞክሩ።",
+      "om": "Kaffaltiin {amount} ETB {property_title} {location} keessatti hin milkoofne. Maaloo irra deebi'aa yaalaa."
     }
   },
   "listing_approved": {
     "subject": {
-      "en": "Listing Approved",
-      "am": "ዝርዝር ጸድቋል",
-      "om": "Tarreen Mirkanoofte"
+      "en": "Property Listing Approved",
+      "am": "የንብረት ዝርዝር ጸድቋል",
+      "om": "Galmeen Qabeenyaa Mirkanaa'eera"
     },
     "body": {
-      "en": "Your listing '{property_title}' in {location} has been approved and is now live!",
-      "am": "የእርስዎ ዝርዝር '{property_title}' በ{location} ጸድቋል እና አሁን ቀጥታ ነው።",
-      "om": "Tarreen keessan '{property_title}' {location} keessatti mirkanaa'ee jira, amma online jira!"
-    }
-  },
-  "tenant_update": {
-    "subject": {
-      "en": "Tenant Update",
-      "am": "የተከራይ ማሻሻያ",
-      "om": "Odeeffannoo Kirreessaa"
-    },
-    "body": {
-      "en": "Update for your listing '{property_title}': A tenant named {tenant_name} is interested.",
-      "am": "ለዝርዝርዎ '{property_title}' ማሻሻያ: {tenant_name} የሚባል ተከራይ ፍላጎት አለው።",
-      "om": "Tarree keessan '{property_title}' irratti odeeffannoo haaraa: Kirreessaan maqaan isaa {tenant_name} jedhamu fedhii qaba."
+      "en": "Your listing '{property_title}' in {location} is approved",
+      "am": "የእርስዎ ዝርዝር '{property_title}' በ{location} ጸድቋል",
+      "om": "Ibsa keessan '{property_title}' {location} keessatti mirkanaa'e"
     }
   },
   "new_listing": {
     "subject": {
-      "en": "New Listing Available",
-      "am": "አዲስ ዝርዝር ይገኛል",
-      "om": "Tarree Haaraa Argama"
+      "en": "New Property Listing Available",
+      "am": "አዲስ የንብረት ዝርዝር አለ",
+      "om": "Galmeen Qabeenyaa Haaraan Jira"
     },
     "body": {
-      "en": "A new listing '{property_title}' is available in {location} matching your preferences.",
-      "am": "አዲስ ዝርዝር '{property_title}' በ{location} ምርጫዎችዎ ጋር የሚዛመድ ይገኛል።",
-      "om": "Tarree haaraa '{property_title}' {location} keessatti fedhii keessaniif argama."
+      "en": "New listing '{property_title}' available in {location}",
+      "am": "አዲስ ዝርዝር '{property_title}' በ{location} ይገኛል",
+      "om": "Ibsa haaraa '{property_title}' {location} keessatti argama"
     }
   }
 }

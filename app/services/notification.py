@@ -10,6 +10,22 @@ from botocore.exceptions import ClientError
 from app.config import settings
 from app.utils.retry import async_retry
 import asyncio
+import json
+from pathlib import Path
+from typing import Optional, List
+
+# Load notification templates from JSON file
+def load_notification_templates():
+    template_path = Path(__file__).parent.parent / "templates" / "notifications.json"
+    try:
+        with open(template_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.error("Failed to load notification templates", error=str(e))
+        return {}
+
+NOTIFICATION_TEMPLATES = load_notification_templates()
+
 
 # Mock SMS sending function
 async def send_sms_mock(phone_number: str, message: str):
@@ -202,3 +218,65 @@ async def retry_failed_notifications(db: AsyncSession):
                 # TODO: Implement admin notification here
 
     logger.info("Finished attempting to retry failed notifications.")
+
+async def get_notification_stats(db: AsyncSession) -> dict:
+    """
+    Retrieves aggregated statistics about notifications.
+    """
+    logger.info("Fetching notification stats")
+
+    # Main stats query
+    main_stats_query = text("""
+        SELECT
+            COUNT(*) AS total_notifications,
+            COUNT(*) FILTER (WHERE status = 'SENT') AS total_sent,
+            COUNT(*) FILTER (WHERE status = 'FAILED') AS total_failed,
+            COUNT(*) FILTER (WHERE status = 'PENDING') AS total_pending
+        FROM notifications
+    """)
+    main_stats_result = await db.execute(main_stats_query)
+    main_stats = main_stats_result.first()
+
+    # Stats by status
+    by_status_query = text("""
+        SELECT status, COUNT(*) as count
+        FROM notifications
+        GROUP BY status
+    """)
+    by_status_result = await db.execute(by_status_query)
+    by_status = {row.status: row.count for row in by_status_result}
+
+    # Stats by event type and status
+    by_event_type_query = text("""
+        SELECT event_type, status, COUNT(*) as count
+        FROM notifications
+        GROUP BY event_type, status
+    """)
+    by_event_type_result = await db.execute(by_event_type_query)
+
+    by_event_type = {}
+    for row in by_event_type_result:
+        if row.event_type not in by_event_type:
+            by_event_type[row.event_type] = {"SENT": 0, "FAILED": 0, "PENDING": 0}
+        by_event_type[row.event_type][row.status] = row.count
+
+    # Ensure all event types have all statuses
+    all_event_types_query = text("SELECT DISTINCT event_type FROM notifications")
+    all_event_types_result = await db.execute(all_event_types_query)
+    all_event_types = [row.event_type for row in all_event_types_result]
+
+    for event_type in all_event_types:
+        if event_type not in by_event_type:
+            by_event_type[event_type] = {"SENT": 0, "FAILED": 0, "PENDING": 0}
+
+    stats = {
+        "total_notifications": main_stats.total_notifications or 0,
+        "total_sent": main_stats.total_sent or 0,
+        "total_failed": main_stats.total_failed or 0,
+        "total_pending": main_stats.total_pending or 0,
+        "by_status": by_status,
+        "by_event_type": by_event_type,
+    }
+    
+    await logger.info("Notification stats retrieved", **stats)
+    return stats
