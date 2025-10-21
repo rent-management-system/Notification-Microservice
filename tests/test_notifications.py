@@ -54,7 +54,6 @@ async def test_circuit_breaker_open_and_block(mocker, caplog):
     subject = "Test"
     body = "Body"
 
-    # Trigger 5 failures to open the circuit
     with caplog.at_level(logging.WARNING):
         for i in range(ses_circuit_breaker.failure_threshold):
             with pytest.raises(ClientError):
@@ -224,3 +223,18 @@ async def test_retry_failure_alerts_admin(mocker, caplog, mock_db_session):
     await mock_db_session.refresh(failed_notification)
     assert failed_notification.status == "FAILED"
     assert failed_notification.attempts == 3
+
+@pytest.mark.asyncio
+async def test_mock_sms_logging(mocker, caplog):
+    from app.services.notification import send_sms_mock
+    import logging
+
+    phone_number = "+251911123456"
+    message = "Test SMS message"
+
+    with caplog.at_level(logging.INFO):
+        result = await send_sms_mock(phone_number, message)
+        assert result["status"] == "success"
+        assert "mock_sms_sent" in caplog.text
+        assert f"phone_number={phone_number}" in caplog.text
+        assert f"message={message}" in caplog.text
