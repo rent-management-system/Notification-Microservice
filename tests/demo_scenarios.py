@@ -5,6 +5,7 @@ from app.services.notification import send_notification_service, retry_failed_no
 from app.models.notification import Notification
 from datetime import datetime
 from sqlalchemy import select
+import logging
 
 @pytest.mark.asyncio
 async def test_send_notification_invalid_user_id(db_session: AsyncSession):
@@ -171,3 +172,75 @@ async def test_idempotency_retry_skips_already_sent(db_session: AsyncSession, mo
     assert updated_notification.status == "SENT"
     assert updated_notification.attempts == 0
     assert updated_notification.context.get("ses_message_id") == mock_ses_message_id
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_logging(mocker, caplog):
+    from app.services.notification import send_email_ses, ses_circuit_breaker
+    from app.utils.retry import CircuitBreakerOpenException
+    from botocore.exceptions import ClientError
+    from datetime import datetime, timedelta
+
+    # Reset circuit breaker state for this test
+    ses_circuit_breaker.failures = 0
+    ses_circuit_breaker.state = "CLOSED"
+    ses_circuit_breaker.last_failure_time = None
+
+    # Mock SES client to always fail
+    mocker.patch("boto3.client.send_email", side_effect=ClientError({"Error": {"Code": "Throttling"}}, "SendEmail"))
+
+    recipient = "test@example.com"
+    subject = "Test"
+    body = "Body"
+
+    with caplog.at_level(logging.WARNING):
+        # Trigger failures to open the circuit
+        for i in range(ses_circuit_breaker.failure_threshold):
+            with pytest.raises(ClientError):
+                await send_email_ses(recipient, subject, body)
+        
+        # Check for OPEN state log
+        assert "Circuit Breaker OPEN" in caplog.text
+        assert "event='circuit_breaker_state_change'" in caplog.text
+        assert "state='OPEN'" in caplog.text
+        assert "service='SES'" in caplog.text
+        
+        caplog.clear()
+
+        # Advance time to trigger HALF_OPEN
+        ses_circuit_breaker.last_failure_time = datetime.utcnow() - timedelta(seconds=ses_circuit_breaker.reset_timeout + 1)
+        
+        # Attempt call, should go HALF_OPEN and fail again
+        with pytest.raises(ClientError):
+            await send_email_ses(recipient, subject, body)
+        
+        # Check for HALF_OPEN and then OPEN state logs
+        assert "Circuit Breaker HALF-OPEN" in caplog.text
+        assert "event='circuit_breaker_state_change'" in caplog.text
+        assert "state='HALF_OPEN'" in caplog.text
+        assert "service='SES'" in caplog.text
+        assert "Circuit Breaker OPEN" in caplog.text # Re-opened
+        assert "state='OPEN'" in caplog.text
+        
+        caplog.clear()
+
+        # Test blocking call log
+        with pytest.raises(CircuitBreakerOpenException):
+            await send_email_ses(recipient, subject, body)
+        assert "Circuit Breaker OPEN, blocking call" in caplog.text
+        assert "event='circuit_breaker_blocked'" in caplog.text
+        assert "service='SES'" in caplog.text
+
+    # Reset circuit breaker and mock SES to succeed for CLOSE state test
+    ses_circuit_breaker.failures = ses_circuit_breaker.failure_threshold
+    ses_circuit_breaker.state = "OPEN"
+    ses_circuit_breaker.last_failure_time = datetime.utcnow() - timedelta(seconds=ses_circuit_breaker.reset_timeout + 1)
+    mocker.patch("boto3.client.send_email", return_value={'MessageId': 'mock-success-id'})
+
+    with caplog.at_level(logging.INFO):
+        await send_email_ses(recipient, subject, body)
+        # Check for HALF_OPEN and then CLOSED state logs
+        assert "Circuit Breaker HALF-OPEN" in caplog.text
+        assert "state='HALF_OPEN'" in caplog.text
+        assert "Circuit Breaker CLOSED" in caplog.text
+        assert "state='CLOSED'" in caplog.text
+        assert "service='SES'" in caplog.text
